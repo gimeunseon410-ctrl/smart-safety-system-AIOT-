@@ -1,39 +1,12 @@
+# Smart Safety System
+
+---
+
 # 1. 주제
 
 **스마트 세이프티 시스템 (Smart Safety System)**
 건설 현장 작업자 IoT 안전 모니터링 플랫폼
 STM32 / Raspberry Pi 5 / Qt Dashboard / Bluetooth SPP / TCP / ML
-
----
-
-## 2. 주제 선정 관련 기사
-
-## 기사 1
-
-**2024년 산업재해 사망자 589명… 건설업 46.9% 최다**
-출처 : 세계일보 / 고용노동부 보도자료 (2025.03.12)
-
-- 2024년 산업현장 사고사망자 589명 (553건)
-- 건설업 276명 → 전체의 46.9% 차지
-- 떨어짐 사고가 전체 사망의 38.5% → 안전모 미착용이 주요 원인
-
-## 기사 2
-
-**안전모 미착용 시 30cm 추락에도 사망 — 개인보호구 착용이 핵심**
-출처 : 안전보건공단 / 세이프티퍼스트뉴스 (2024.02.07)
-
-- 30~40cm 낮은 높이 추락에도 안전모 미착용으로 사망 사례 빈번
-- AB형·ABE형 안전모는 추락 위험 방지 용도로 국가 공인 기준에 명시
-- 착용 기준이 있어도 실제 미착용 상태 작업 다수
-
-## 기사 3
-
-**건설현장 사고 원인 1위는 관리적 요인 — 안전 규정 미준수 32%**
-출처 : SK AX 분석 리포트 / 한국건설산업연구원 (2025.09)
-
-- 사고 원인 1위 : 관리적 요인 32% (안전규정 미준수 / 부적절한 지시 / 관리 부재)
-- 2024년 상반기 부상 근로자 15,959명 / 경제적 손실 6조 원
-- 인력 감시·수기 보고 방식은 한계 → 스마트 안전관리 솔루션 도입 필수
 
 ---
 
@@ -91,6 +64,16 @@ STM32 / Raspberry Pi 5 / Qt Dashboard / Bluetooth SPP / TCP / ML
   사고 / 낙상 / 음주 알림 카드
 ```
 
+# 3-1 센서정리
+
+![image.png](attachment:74b1a6f9-2300-4fc6-8020-c2fbd1bf0489:image.png)
+
+![image.png](attachment:2b7455e8-0149-48a1-b73e-90bdb461bbe8:image.png)
+
+# 3-2 하드웨어 사진
+
+![KakaoTalk_20260316_190721284.jpg](attachment:22642a39-67e0-466f-85d1-3a0d9e74a12b:KakaoTalk_20260316_190721284.jpg)
+
 ---
 
 # 4. 기술 정리
@@ -102,7 +85,7 @@ STM32 / Raspberry Pi 5 / Qt Dashboard / Bluetooth SPP / TCP / ML
 | STM32 | 센서 허브 (MPU-6050, BMP-280, MQ-3, HW-827, LCD) |
 | MPU-6050 | 가속도+자이로 6축 → ML 행동인식 / accel_mag / accel_delta 계산 |
 | BMP-280 | 기압 → 층간 이동 감지 보조 |
-| MQ-3 | 알코올 디지털 출력 (gas_do = 0 / 1) |
+| MQ-3 | 알코올 디지털 출력 |
 | HW-827 | 맥박 ADC 원시값 → BPM 피크감지 변환 |
 | IR Tracker | 헬멧 착용 유무 판단 → 근로시간 누적 |
 | BH-1750 | 조도(lux) 측정 → 환경 분류 (야간 / 실내 / 야외) |
@@ -114,10 +97,10 @@ STM32 / Raspberry Pi 5 / Qt Dashboard / Bluetooth SPP / TCP / ML
 
 | 항목 | 내용 |
 | --- | --- |
-| 클라이언트 | Python 3 (test_helmet22.py) |
-| 서버 | C++17 (server.cpp) + nlohmann/json + GStreamer |
+| 클라이언트 | Python 3 |
+| 서버 | C++17 + json + GStreamer |
 | 데이터베이스 | SQLite3 (WAL 모드 / 10패킷 배치 commit) |
-| ML 모델 | scikit-learn Random Forest (joblib) — 정확도 97.5% |
+| ML 모델 | scikit-learn Random Forest — 정확도 97.5% |
 | 영상 스트리밍 | GStreamer + libcamerasrc → JPEG → TCP |
 | ML 학습 방식 | UCI WISDM 공개 데이터 선학습 → 실측 데이터 재학습 |
 | Qt Dashboard | 실시간 센서 / 영상 / 경보 표시 |
@@ -229,3 +212,105 @@ CREATE TABLE sensor_log (
 - 저장 완료 후 Qt로 ACCIDENT_VIDEO_SAVED JSON 전송
 
 ---
+
+# 7. 통신
+
+## Bluetooth SPP (STM32 → RPi5)
+
+패킷 형식
+
+```markdown
+[DATA] ax,ay,az,gx,gy,gz,pressure,adc,gas_do
+
+파싱 정규식
+\[DATA\]\s*(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(\d+)
+
+변환
+  ax = int(group(1)) / 10000.0
+  pressure = int(group(7)) / 100.0  → 800~1100 hPa 범위 검증
+  gas_do = int(group(9))            → 0 또는 1만 유효
+```
+
+역방향 (RPi5 → STM32 LCD)
+
+```markdown
+[BPM]075\r\n   심박수
+[HLM]1\r\n     착용=1 / 미착용=0
+[ACT]WALK\r\n  행동 (WALK / RUN / SIT / ------)
+
+주기 : 1초마다 DB 최신값 조회 → 변경된 항목만 전송
+```
+
+## WiFi TCP — 센서 채널 (포트 9090)
+
+```markdown
+방향 : 헬멧 RPi → 서버
+형식 : JSON 한 줄 + \n
+
+{
+  "seq": 1234,
+  "device_id": "helmet-01",
+  "data": {
+    "ax":0.1, "ay":-0.9, "az":9.8,
+    "gx":0.01, "gy":0.0, "gz":0.02,
+    "pressure":1013.25, "adc_avg":2048,
+    "bpm":72, "gas_do":0
+  },
+  "lux": 320.5,
+  "tracker": 1,
+  "helmet_on": true,
+  "work_min": 45,
+  "accel_mag": 9.85,
+  "accel_delta": 0.12,
+  "activity": "걷기",
+  "fall_detected": false,
+  "ts_client": "2025-03-08T14:32:01"
+}
+
+전송 실패 시 즉시 소켓 재연결 (무한 루프)
+```
+
+## WiFi TCP — 영상 채널 (포트 9091)
+
+```markdown
+방향 : 헬멧 RPi → 서버
+연결 직후 : "DEVID:helmet-01\n" 전송 (device_id 식별)
+프레임 형식 : [8byte 크기 헤더 little-endian uint64] + [JPEG 바이너리]
+해상도 : 320x240 / FPS : 15 / JPEG quality : 60
+
+GStreamer 파이프라인
+  libcamerasrc
+  → videoconvert
+  → videoscale
+  → video/x-raw,width=320,height=240,framerate=15/1
+  → jpegenc quality=60
+  → appsink
+```
+
+## Qt 채널 (포트 9092~9094)
+
+```markdown
+9092 : 서버 → Qt  영상 브로드캐스트 (8byte + JPEG)
+9093 : 서버 → Qt  센서 JSON 브로드캐스트 (activity / environment / alert 포함)
+9094 : Qt → 서버  명령 수신
+       "SWITCH:helmet-02\n" → 서버 활성 영상 헬멧 전환
+```
+
+## 다중 헬멧 지원 (C++ DeviceState)
+
+```markdown
+g_dev_map : map<device_id, DeviceState*>
+
+DeviceState 당 독립 보유
+  FrameQ      프레임 큐 (최대 2개, 초과 시 drop)
+  frame_buf   사고 전 10초 버퍼 (FPS × 10 프레임)
+  acc_active  사고 진행 중 플래그 (atomic<bool>)
+  prev_mtx    prev_pressure / prev_bpm race condition 방지
+
+스레드 구조
+  sensor_in_server()   헬멧별 handle_sensor_client() 스레드
+  video_in_server()    헬멧별 handle_video_client() + frame_processor_thread()
+  qt_video_server()    Qt 영상 브로드캐스터 등록
+  qt_sensor_server()   Qt 센서 브로드캐스터 등록
+  qt_cmd_server()      Qt SWITCH 명령 수신 (포트 9094)
+```
